@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>Windows Event ID - CheatSheet</title>
+        <link rel="icon" type="image/x-icon" href="../assets/img/favicon.ico" />
+        <!-- Font Awesome icons (free version)-->
+        <script src="https://use.fontawesome.com/releases/v5.15.1/js/all.js" crossorigin="anonymous"></script>
+        <!-- Google fonts-->
+        <link href="https://fonts.googleapis.com/css?family=Saira+Extra+Condensed:500,700" rel="stylesheet" type="text/css" />
+        <link href="https://fonts.googleapis.com/css?family=Muli:400,400i,800,800i" rel="stylesheet" type="text/css" />
+        <!-- Core theme CSS (includes Bootstrap)-->
+        <link href="../css/styles.css" rel="stylesheet" />
+    </head>
+    <body id="page-top">
+        <!-- Navigation-->
+        <nav class="navbar navbar-expand-xl navbar-dark bg-primary fixed-top" id="sideNav">
+            <script src="/js/nav.js"></script>
+        </nav>
+        <!-- Page Content-->
+        <div>
+            <nav class="navbar navbar-expand-xl navbar-dark bg-header sticky-top">
+            <h3 class="header-article"><a href="../tutorialpage.html">Tutorial & Cheatseet </a>> Windows Event ID Cheatsheet</h3>
+            </nav>
+            
+            <section class="article">
+                <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
+                    <div class="flex-grow-1">
+                        <h4 class="mb-0">Windows Event IDs</h4>
+                        <p>
+                            As a incident responder, it is important to know what is logged on the system, or what logs are important to trace back some malicious activities in a system. The Windows event log records specific events related to the system, security, and applications on a Microsoft system. <br>
+                            <br>
+                            <strong>SYSTEM :</strong>
+                            <ul>
+
+
+
+                            </ul>
+                            <br>
+                            <strong>SECURITY :</strong>
+                            <ul>
+                                <li>4624: An account was successfully logged on (LOCAL)</li>
+                                <li>4625: An account failed to log on (LOCAL)</li>
+                                <li>4702: A scheduled task was updated</li>
+                                <li>4662: An operation was performed on an object (DOMAIN)</li>
+                                <li>4768/4769: Authentication Kerberos has been requested (DOMAIN)</li>
+                                <li>4799: User groups enumeration by a process </li>
+                                <li>5140: A network share oject was access</li>
+                                <li>5379: Credential Manager credentials were read</li>
+                                <br>
+                                <u>Source: Service Control Manager</u>
+                                <li>7036: A service has changed to running state</li>
+                            </ul>
+                            <br>
+                            <strong>APPLICATION :</strong>
+                            <ul>
+                                <u>Source: ESENT (Database engine Windows)</u>
+                                <li>325: A new database is created by the database engine (NTDS.dit detection)</li>
+                                <li>327: The database engine detached a database (put offline the database, so cold analysis is possible)</li>
+                            </ul>
+                            <br>
+
+                        </p>                      
+                    </div>
+                </div>
+            </section>
+        </div>
+        <!-- Bootstrap core JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- Third party plugin JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.4.1/jquery.easing.min.js"></script>
+        <!-- Core theme JS-->
+        <script src="js/scripts.js"></script>
+    </body>
+</html>

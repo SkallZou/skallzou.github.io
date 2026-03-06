@@ -115,8 +115,15 @@
                                 Click on "save as..." and save it as an executable file, because the client requests an executable file.
 
                                 <img src="img/Wireshark/exefile.jpg" class="img-fluid" width="700">
+                            </p>
+                            <h4 class="mb-0">Statistics to identify systems</h4>
+                            <p>
+                                On the header, navigate to Statistics and click and Endpoints will display networking statistics per address (MAC or IPv4 / IPv6). <br>
+                                Clicking on the tab IPv4, you can determine the range of IP address of the private network for example. You can also determine what system is making a lot of requests. DNS server or domain controller are likely to be the most verbose. <br>
+                                Getting in the TCP tab, we can identify what system communicate on what port. For example, on the screenshot below, the ip address 172.17.79.4 is communicating on the port 88 (Kerberos), 135 (RPC), 389 (LDAP) and 445 (SMB). There is a high chance that this IP address is a domain controller.
 
-                            </p>                          
+                                <img src="img/Wireshark/statendpoint.jpg" class="img-fluid" width="500">
+                            </p>                    
                         <br>
                     </div>
                 </div>
