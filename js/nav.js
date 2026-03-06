@@ -1,6 +1,6 @@
 document.write('\
 \
-     <a class="navbar-brand js-scroll-trigger" href="../index.html">\
+     <a class="navbar-brand js-scroll-trigger" href="/index.html">\
                 <span class="d-block d-xl-none">Olivier LEUNG</span>\
                 <span class="d-none d-xl-block"><img class="img-fluid img-profile rounded-circle mx-auto mb-2" src="/assets/img/profile.jpg" alt="" /></span>\
             </a>\
