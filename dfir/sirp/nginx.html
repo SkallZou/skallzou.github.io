@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>Nginx & Certbot</title>
+        <link rel="icon" type="image/x-icon" href="../../assets/img/favicon.ico" />
+        <!-- Font Awesome icons (free version)-->
+        <script src="https://use.fontawesome.com/releases/v5.15.1/js/all.js" crossorigin="anonymous"></script>
+        <!-- Google fonts-->
+        <link href="https://fonts.googleapis.com/css?family=Saira+Extra+Condensed:500,700" rel="stylesheet" type="text/css" />
+        <link href="https://fonts.googleapis.com/css?family=Muli:400,400i,800,800i" rel="stylesheet" type="text/css" />
+        <!-- Core theme CSS (includes Bootstrap)-->
+        <link href="../../css/styles.css" rel="stylesheet" /><!--change path if file has been moved to another folder-->
+    </head>
+    <body id="page-top">
+        <!-- Navigation-->
+        <nav class="navbar navbar-expand-xl navbar-dark bg-primary fixed-top" id="sideNav">
+            <script src="/js/nav.js"></script>
+        </nav>
+        <!-- Page Content-->
+        <div>
+            <nav class="navbar navbar-expand-xl navbar-dark bg-header sticky-top">
+            <h3 class="header-article"><a href="../../dfirpage.html">Digital Forensics And Incident Response </a>> <a href="../sirp.html">SIRP </a>> Nginx & Certbot</h3><!--change path if file has been moved to another folder-->
+            </nav>
+            
+            <section class="article">
+                <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
+                    <div class="flex-grow-1">
+                        <h4 class="mb-0">1/ Description</h4>
+                        <p>
+                            Nginx is web proxy that acts between a user's device and the internet. A proxy receives the user's request, forward it and return the web application's response to the user. It adds a layer a security for any user's browsing, before forwarding it, it can check if the url requested by the user is forbidden. <br>
+                            On this installation, we will use Nginx as a reverse proxy. A reverse proxy receives requests from external clients, forward them to a backend servers of your environment. It serves as a gateway in front of the servers and manage the incoming traffic. The forwarding depends on the reverse proxy configuration that we will explain in this article. <br>
+                            <br>
+                            Certbot is an open-source tools to obtain and manage the TLS certificates for web applications. It requests the TLS certificates from <i>Let's Encrypt</i>. <br>
+                        </p>
+                        <h4 class="mb-0">2/ Installation</h4>
+                        <p>
+                            The installation will be based on docker container. Create a docker-compose.yml file to define your containers.
+
+                            <div class="squarebox">
+                                version: '3'<br>
+                                services:<br>
+                                &emsp;webserver:<br>
+                                &emsp;&emsp;image: nginx:latest <br>
+                                &emsp;&emsp;ports: <br>
+                                &emsp;&emsp;- 80:80 <br>
+                                &emsp;&emsp;- 443:443 <br>
+                                &emsp;restart: always
+                            </div>
+
+                            Run the container with <i>docker compose up</i>
+
+                            With the mapping of port in the docker compose file, nginx web server should be reachable on http://localhost <br>
+                            Edit the docker-compose file and add: <br>
+                            <div class="squarebox">
+                                volumes: <br>
+                                &emsp;- ./nginx/conf.d/:/etc/nginx/conf.d/:ro
+                                &emsp;- ./certbot/www:/var/www/certbot/:ro
+                            </div>
+
+                            The volume links your local directory ./nginx/conf.d/ to the container's directory /etc/nginx/conf.d. and the other volume will be needed for certbot<br>
+                            RO = Read Only <br>
+                            In ./nginx/conf.d, add a nginx configuration file "default.conf". <br>
+                            <div class="squarebox">
+                                server { <br>
+                                &emsp;listen 80; <br>
+                                &emsp;listen [::]:80; <br>
+                                <br>
+                                &emsp;server_name example.org www.example.org; <br>
+                                &emsp;server_tokens off;<br>
+                                <br>
+                                &emsp;location /.well-known/acme-challenge/ {<br>
+                                &emsp;&emsp;root /var/www/certbot;<br>
+                                &emsp;}<br>
+                                <br>
+                                &emsp;location / {<br>
+                                &emsp;&emsp;return 301 https://example.org$request_uri;<br>
+                                &emsp;}<br>
+                                }
+                            </div>
+                            This indicates that nginx will listen on the port 80 for the domain example.org. You can change <i>example.org</i> for your own domain name. <br>
+                            The configuration indicates that nginx will redirect automatically every http request to https except if the path is the url path is <b>/.well-known/acme-challenge/</b> used by certbot for the https configuration. <br>
+                            <br>
+                            Once done, edit the docker compose file to define certbot container.
+                            <div class="squarebox">
+                                certbot: <br>
+                                &emsp;image: certbot/certbot:latest<br>
+                                &emsp;volumes:<br>
+                                &emsp;  - ./certbot/www/:/var/www/certbot/:rw
+                            </div>
+                            rw: read-write is allowed for certbot to write in /var/www/certbot.
+                            Every file created by certbot will be mapped to the local directory ./certbot/www <br>
+                            Run the container: docker compose up -d <br>
+                            To see the logs: docker compose logs -f <br>
+                            <br>
+                            Test run certbot
+                            <div class="squarebox">docker compose run --rm  certbot certonly --webroot --webroot-path /var/www/certbot/ --dry-run -d example.org</div>
+
+                            A successful response should give you this message: <br>
+                            <i>Saving debug log to /var/log/letsencrypt/letsencrypt.log <br>
+                                Simulating a certificate request for example.org <br>
+                                The dry run was successful. <br>
+                            </i>
+                            <br>
+                            Otherwise, a failure response would be: <br>
+                            <i>Certbot failed to authenticate some domains (authenticator: webroot). The Certificate Authority reported these problems <br>
+                                ... <br>
+                                Some challenges have failed. <br>
+                            </i>
+                            <br>
+                            If successful, Certbot creates certificates under /etc/letsencrypt/ <br>
+                            A mapping must be done between this folder and a local directory. <br>
+                            Add the following entry under Volumes in the docker compose file:
+                            <div class="squarebox">./certbot/conf/:/etc/letsencrypt/:rw</div>
+                            Restart the docker and run certbot without dry-run.
+                            <div class="squarebox">$ docker compose run --rm  certbot certonly --webroot --webroot-path /var/www/certbot/ -d example.org</div>
+
+                            If this is successful, certbot has generated the files for https.
+                        </p>
+                        <h4 class="mb-0">3/ Configuration</h4>
+                        <p>
+                            Certbot generates the files for https under /etc/letsencrypt/ <br>
+                            Nginx must read the files for https. <br>
+                            <br>
+                            <b>Certbot (/etc/letsencrypt/) <-- LOCAL(./certbot/conf) --> Nginx(/etc/nginx/ssl)</b><br>
+                            <br>
+                            Nginx definition:
+                            <div class="squarebox">
+                                nginx: <br>
+                                &emsp;image: nginx:latest <br>
+                                &emsp;container_name: nginx <br>
+                                &emsp;restart: always <br>
+                                &emsp;ports: <br>
+                                &emsp;  - '80:80' <br>
+                                &emsp;  - '443:443' <br>
+                                &emsp;volumes: <br>
+                                &emsp;  - ./nginx/conf.d/:/etc/nginx/conf.d/:ro <br>
+                                &emsp;  - ./certbot/www:/var/www/certbot/:ro <br>
+                                &emsp;  - ./certbot/conf/:/etc/nginx/ssl/:ro <br>
+                            </div>
+                            Certbot definition:
+                            <div class="squarebox">
+                                certbot:<br>
+                                &emsp;container_name: certbot <br>
+                                &emsp;image: certbot/certbot <br>
+                                &emsp;volumes: <br>
+                                &emsp;  - ./certbot/www:/var/www/certbot/:rw <br>
+                                &emsp;  - ./certbot/conf/:/etc/letsencrypt/:rw <br>
+                            </div>
+
+                            Edit nginx configuration in ./nginx/conf.d/default.conf, we will add the https section.
+                            <div class="squarebox">
+                                server {<br>
+                                &emsp;listen 443 ssl;<br>
+                                &emsp;server_name example.org //Put your own domain here<br>
+                                <br>
+                                &emsp;ssl_certificate /etc/nginx/ssl/live/example.org/fullchain.pem;<br>
+                                &emsp;ssl_certificate_key /etc/nginx/ssl/live/example.org/privkey.pem;<br>
+                                <br>
+                                &emsp;location /thehive {<br>
+                                &emsp;&emsp;proxy_pass http://thehive:9000/thehive; <i>//thehive is the hostname of the container that host TheHive</i><br>
+                                &emsp;&emsp;proxy_set_header Host $host;<br>
+                                &emsp;&emsp;proxy_set_header X-Real-IP $remote_addr;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-Proto $scheme;<br>
+                                &emsp;&emsp;add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";<br>
+                                &emsp;&emsp;proxy_http_version 1.1;<br>
+                                &emsp;}<br>
+                                <br>
+                                &emsp;location /cortex {<br>
+                                &emsp;&emsp;proxy_pass http://cortex:9001/cortex; <i>//cortex is the hostname of the container that host Cortex</i><br>
+                                &emsp;&emsp;proxy_set_header Host $host;<br>
+                                &emsp;&emsp;proxy_set_header X-Real-IP $remote_addr;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-Proto $scheme;<br>
+                                &emsp;&emsp;add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";<br>
+                                &emsp;&emsp;proxy_http_version 1.1;<br>
+                                &emsp;}<br>
+                                }<br>
+                                <br>
+                                <i>// Configuration for Tracecat below</i><br>
+                                server {<br>
+                                &emsp;listen 443 ssl;<br>
+                                &emsp;server_name tracecat.example.org //Put your own domain here<br>
+                                <br>
+                                &emsp;ssl_certificate /etc/nginx/ssl/live/tracecat.example.org/fullchain.pem;<br>
+                                &emsp;ssl_certificate_key /etc/nginx/ssl/live/tracecat.example.org/privkey.pem;<br>
+                                <br>
+                                &emsp;location / {<br>
+                                &emsp;&emsp;proxy_pass http://ui:3000;<br>
+                                &emsp;&emsp;proxy_set_header Host $host;<br>
+                                &emsp;&emsp;proxy_set_header X-Real-IP $remote_addr;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-Proto $scheme;<br>
+                                &emsp;&emsp;add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";<br>
+                                &emsp;&emsp;proxy_http_version 1.1;<br>
+                                &emsp;}<br>
+                                <br>
+                                &emsp;location /api {<br>
+                                &emsp;&emsp;rewrite ^/api/(.*)$ /$1 break;<br>
+                                &emsp;&emsp;proxy_pass http://api:8000;<br>
+                                &emsp;&emsp;proxy_set_header Host $host;<br>
+                                &emsp;&emsp;proxy_set_header X-Real-IP $remote_addr;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;<br>
+                                &emsp;&emsp;proxy_set_header X-Forwarded-Proto $scheme;<br>
+                                &emsp;&emsp;add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";<br>
+                                &emsp;&emsp;proxy_http_version 1.1;<br>
+                                &emsp;}<br>
+                                }<br>
+                            </div>
+
+                            If you ever need to add other web application on the same reverse proxy nginx, just append in the configuration file for the other web application.
+                            <br>
+                            This comes to the end of Cortex & Cerbot installation and configuration.
+                        </p>
+
+
+                    </div>
+                </div>
+            </section>
+        </div>
+        <!-- Bootstrap core JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- Third party plugin JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.4.1/jquery.easing.min.js"></script>
+        <!-- Core theme JS-->
+        <script src="js/scripts.js"></script>
+    </body>
+</html>
