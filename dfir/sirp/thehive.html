@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>The Hive</title>
+        <link rel="icon" type="image/x-icon" href="../../assets/img/favicon.ico" />
+        <!-- Font Awesome icons (free version)-->
+        <script src="https://use.fontawesome.com/releases/v5.15.1/js/all.js" crossorigin="anonymous"></script>
+        <!-- Google fonts-->
+        <link href="https://fonts.googleapis.com/css?family=Saira+Extra+Condensed:500,700" rel="stylesheet" type="text/css" />
+        <link href="https://fonts.googleapis.com/css?family=Muli:400,400i,800,800i" rel="stylesheet" type="text/css" />
+        <!-- Core theme CSS (includes Bootstrap)-->
+        <link href="../../css/styles.css" rel="stylesheet" /><!--change path if file has been moved to another folder-->
+    </head>
+    <body id="page-top">
+        <!-- Navigation-->
+        <nav class="navbar navbar-expand-xl navbar-dark bg-primary fixed-top" id="sideNav">
+            <script src="/js/nav.js"></script>
+        </nav>
+        <!-- Page Content-->
+        <div>
+            <nav class="navbar navbar-expand-xl navbar-dark bg-header sticky-top">
+            <h3 class="header-article"><a href="../../dfirpage.html">Digital Forensics And Incident Response </a>> <a href="../sirp.html">SIRP </a>> The Hive</h3><!--change path if file has been moved to another folder-->
+            </nav>
+            
+            <section class="article">
+                <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
+                    <div class="flex-grow-1">
+                        <h4 class="mb-0">1/ Description</h4>
+                        <p>
+                            TheHive is a Security Incident Response Platform, a case management for the security team. The case management is used to create and track the security incidents, monitor the investigation progress. Centralize the alerts from the SIEM, and allows the collaboration between the analysts. TheHive separates the concept of Alert, Case, Task, and Observable. Every event that has matched a detection rule in the SIEM will be sent as an Alert to TheHive. Alerts are changed into a case if an investigation is needed.
+                        </p>
+                        <h4 class="mb-0">2/ Installation</h4>
+                        <p>
+                            2 ways of installation: local installation (run by services) or docker container.<br>
+                            <ul>
+                                <li>Download thehive4:<br>
+                                    https://deb.thehive-project.org<br>
+                                    Dpkg -I thehive.deb
+                                </li>
+                                <li>
+                                    Docker container: clone the follow github repository:<br>
+                                    https://github.com/HakkYahud/THC<br>
+                                </li>
+                            </ul>
+                            For the docker installation, step by step explanation is on https://github.com/HakkYahud/THC/tree/master/docker.<br>
+                            After running env.sh, it will generate .env in the current directory.<br>
+
+                            <div class="squarebox">
+                                PUBLIC_APP_PORT = PORT NAT RULE IN THE FIREWALL<br>
+                                PUBLIC_APP_URL = URL TO ACCESS TO TRACECAT<br>
+                                PUBLIC_API_URL = PUBLIC_APP_URL/api<br>
+                                CADDY env var<br>
+                                BASE_DOMAIN = :80<br>
+                                ADDRESS = 0.0.0.0<br>
+                            </div>
+                        </p>
+                        <h4 class="mb-0">3/ Observables</h4>
+                        <p>
+                            Observable types are configured in the Administrators space: open Entities Management and select the Observable types tab.
+                            <img src="img/thehive/thehiveobs.png" class="img-fluid" width="500">
+
+                        </p>
+                        <h4 class="mb-0">4/ Custom field</h4>
+                        <p>
+                            Custom fields are fields that could be added to multiple cases. Field such as urgency, impact are not present and some organizations require those fields to be filled during an investigation. On TheHive4, connect as Admin and add case custom field.
+
+                            <img src="img/thehive/thehivecustomfield.png" class="img-fluid" width="600">
+                            As previously mentioned, custom field can be added in a case template. Case is an incident, case templates simplify the case creation by automatically creating the case with the minimum information and item in the case. Information, tasks and custom fields are item present in the case template.
+
+                            <img src="img/thehive/thehivecasetemplatecustomfield.png" class="img-fluid" width="800">
+                            <img src="img/thehive/thehivecasetemplatetask.png" class="img-fluid" width="800">
+
+                            Tasks standardize investigation of incidents.
+
+                        </p>
+
+                    </div>
+                </div>
+            </section>
+        </div>
+        <!-- Bootstrap core JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- Third party plugin JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.4.1/jquery.easing.min.js"></script>
+        <!-- Core theme JS-->
+        <script src="js/scripts.js"></script>
+    </body>
+</html>
