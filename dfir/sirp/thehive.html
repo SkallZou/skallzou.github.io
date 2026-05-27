@@ -132,8 +132,8 @@
                                 &emsp;"subscription_required": false,<br>
                                 &emsp;"service_homepage": "https://www.skallzou.github.org/",<br>
                                 &emsp;"service_logo": {<br>
-                                &emsp;"path": "assets/logo.png",<br>
-                                &emsp;"caption": "logo"<br>
+                                &emsp;&emsp;"path": "assets/logo.png",<br>
+                                &emsp;&emsp;"caption": "logo"<br>
                                 &emsp;},<br>
                                 &emsp;"command": "YahudCorp/analyzer_getUser.py"<br>
                                 }
@@ -147,9 +147,139 @@
                             For example, if the observable is a hostname, the analyst would like to know what system is this, a domain controller, a backup server or a simple workstation ? <br>
                             <br>
                             "command": "YahudCorp/analyzer_getUser.py" indicates the python script to run when the analyzer is being called.
+                            <br>
+                            Open your text editor and save the file as the file name you have put in your JSON config file, in my case it is analyzer_getUser.py.<br>
+                            <br>
+                            In your python file, Importing the Analyzer or Responder library from cortexutils.analyzer is the first thing to do. That allows you to get the functions to interact with TheHive when calling the analyzer.
+                            If cortexutils is not installed, install it with pip.
+                            <div class="squarebox">pip install cortexutils</div>
+                            Parameters in the base configuration can be called using self.get_param(). In the following example, key and services are keys that are used by the JSON file. 
+                            <div class="squarebox">
+                                Apikey = self.get_param(‘config.key’)<br>
+                                service = self.get_param(‘config.service’)
+                            </div>
+                            Creating an analyzer will always start with: from cortexutils.analyzer import Analyzer <br>
+                            Analyzer analyzes observables and generates a report.<br>
+                            <br>
+                            Functions List:
+                            <ul>
+                                <li>Summary (return dict(‘taxonomies’)): Write the report summary on the observable. Take 1 parameter (raw) corresponding to the result of the report.</li>
+                                <li>Report is stored in the attribute report: self.report({“result”:response.json()})</li>
+                                <li>Run(): Starting the analyzer algorithm</li>
+                            </ul>
+                            Those methods belong to the Analyzer class.<br>
+                            <br>
+                            Example using summary:
+                            <div class="squarebox">
+                                def summary(self,raw):<br>
+                                &emsp;taxonomies = []<br>
+                                &emsp;level = "suspicious"<br>
+                                &emsp;namespace = "tehtris"<br>
+                                &emsp;predicate = self.service<br>
+                                &emsp;if predicate == "GetSystem":<br>
+                                &emsp;&emsp;sysInfo = dict()<br>
+                                &emsp;&emsp;sysInfo['os'] = raw['result']['data'][0]['os']['pretty_description']<br>
+                                &emsp;&emsp;sysInfo['uuid'] = raw['result']['data'][0]['uuid']<br>
+                                &emsp;&emsp;sysInfo['tag'] = raw['result']['data'][0]['tags']<br>
+                                <br>
+                                &emsp;for i in ['os', 'uuid', 'tag']:<br>
+                                &emsp;&emsp;value = sysInfo[i]<br>
+                                &emsp;&emsp;taxonomies.append(self.build_taxonomy(level, namespace, predicate, value))<br>
+                                <br>
+                                &emsp;return {"taxonomies": taxonomies}
+                            </div>
+                            <br>
+                            Creating an responder will always start with: from cortexutils.analyzer import Responder<br>
+                            Similar as Analyzer, responder requires two files to work:
+                            <ul>
+                                <li>JSON file</li>
+                                <li>Python file</li>
+                            </ul>
+                            Same as the analyzer, the JSON file is used to specify on what data type it can be run and get the information about the configuration. (apikey…) <br>
+                            <div class="squarebox">
+                                {<br>
+                                &emsp;"name": "Responder_IsolateSystem",<br>
+                                &emsp;"version": "1.0",<br>
+                                &emsp;"author": "SkallZou",<br>
+                                &emsp;"url": "https://github.com/TheHive-Project/Cortex-Analyzers",<br>
+                                &emsp;"license": "AGPL-V3",<br>
+                                &emsp;"description": "Isolate the affected system",<br>
+                                &emsp;"dataTypeList": ["thehive:case_artifact"],<br>
+                                &emsp;"baseConfig": "YahudCorp",<br>
+                                &emsp;"config": {<br>
+                                &emsp;&emsp;"service": "isolation"<br>
+                                &emsp;},<br>
+                                &emsp;"configurationItems": [<br>
+                                &emsp;{<br>
+                                &emsp;&emsp;"name": "key",<br>
+                                &emsp;&emsp;"description": "API key for YahudCorporation",<br>
+                                &emsp;&emsp;"type": "string",<br>
+                                &emsp;&emsp;"multi": false,<br>
+                                &emsp;&emsp;"required": true<br>
+                                &emsp;}],<br>
+                                &emsp;"registration_required": true,<br>
+                                &emsp;"subscription_required": false,<br>
+                                &emsp;"service_homepage": "https://www.skallzou.github.org/",<br>
+                                &emsp;"service_logo": {<br>
+                                &emsp;&emsp;"path": "assets/logo.png",<br>
+                                &emsp;&emsp;"caption": "logo"<br>
+                                &emsp;},<br>
+                                &emsp;"command": "YahudCorp/responder_isolateSystem.py"<br>
+                                }                                
+                            </div>
+                            Datatype list : thehive:case, thehive:case_artifact, thehive:alert, thehive:case_task, thehive:case_task_log<br>
+                            In the python script, here are two ways to display message in the output:
+                            <ul>
+                                <li>Return Self.report(“print value”)</li>
+                                <li>Return self.error(“print error”)</li>
+                            </ul>
+                            Operations is a list what the submitter system should execute.<br>
+                            <ul>
+                                <li>AddTagToArtifact ({ "type": "AddTagToArtifact", "tag": "tag to add" }): add a tag to the artifact related to the object</li>
+                                <li>AddTagToCase ({ "type": "AddTagToCase", "tag": "tag to add" }): add a tag to the case related to the object</li>
+                                <li>MarkAlertAsRead: mark the alert related to the object as read</li>
+                                <li>AddCustomFields ({"name": "key", "value": "value", "tpe": "type"}): add a custom field to the case related to the object</li>
+                            </ul>
+                            Exemple using operation to add a tag to the alert:
+                            <div class="squarebox">
+                                def operations(self, raw):<br>
+                                &emsp;if self.service == "GetSystem":<br>
+                                &emsp;&emsp;return [self.build_operation("AddTagToArtifact", tag=self.uuid), self.build_operation("AddTagToArtifact", tag=self.os), self.build_operation("AddTagToArtifact", tag=self.tag)]<br>
+                                <br>
+                                &emsp;elif self.service == "GetUser":<br>
+                                &emsp;&emsp;return [self.build_operation("AddTagToArtifact", tag=self.userType)]
+                            </div>
+                            <h5 class="mb-0">Enable the analyzer or responder</h4>
+                            After creating the .json file for the analyzer/responder, the analyzer or responder is still not enable in Cortex, a manual activation is necessary. Click on Organization => Analyzers or Responders => Search for the analyzer => Click on Enable<br>
+                            <img src="img/thehive/cortexenableresponder.png" class="img-fluid" width="700">
+                            The current and default docker container does not have the dependencies by default. If the container reboots, dependencies must be install again (Python, pip3, must be installed…).<br>
+                            <br>
+                            Here are below some dependencies for cortex:
+                            <div class="squarebox">
+                                apt update<br>
+                                apt install python3 python3-pip<br>
+                                pip install cortexutils<br>
+                                pip install requests
+                            </div>
+                            You might also face a old distrib for the old docker, some sources are not unavailable:
+                            <div class="squarebox">
+                                cd /etc/apt/<br>
+                                cp sources.list sources.list.backup<br>
+                                echo 'deb http://deb.debian.org/debian bullseye main' > sources.list<br>
+                                echo 'deb http://security.debian.org/debian-security bullseye-security main' >> sources.list<br>
+                                echo 'deb http://deb.debian.org/debian bullseye-updates main' >> sources.list<br>
+                                <br>
+                                apt update<br>
+                                apt full-upgrade<br>
+                                <br>
+                                apt install python3.9 python3-pip
+                            </div>
+                            If public key is missing, use apt key.
+                            <div class="squarebox">
+                                apt-key adv --keyserver keyserver.ubuntu.com --recv-keys <PUBKEY>
+                            </div>
+                            You can install all the dependencies and save the docker image for the next build, then use this image so the dependencies will still remain after rebooting.<br>
                         </p>
-                        
-
                     </div>
                 </div>
             </section>
