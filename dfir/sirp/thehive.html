@@ -29,11 +29,11 @@
             <section class="article">
                 <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
                     <div class="flex-grow-1">
-                        <h4 class="mb-0">1/ Description</h4>
+                        <h4 class="mb-0">I/ TheHive</h4>
                         <p>
                             TheHive is a Security Incident Response Platform, a case management for the security team. The case management is used to create and track the security incidents, monitor the investigation progress. Centralize the alerts from the SIEM, and allows the collaboration between the analysts. TheHive separates the concept of Alert, Case, Task, and Observable. Every event that has matched a detection rule in the SIEM will be sent as an Alert to TheHive. Alerts are changed into a case if an investigation is needed.
                         </p>
-                        <h4 class="mb-0">2/ Installation</h4>
+                        <h4 class="mb-0">1. Installation</h4>
                         <p>
                             2 ways of installation: local installation (run by services) or docker container.<br>
                             <ul>
@@ -58,13 +58,13 @@
                                 ADDRESS = 0.0.0.0<br>
                             </div>
                         </p>
-                        <h4 class="mb-0">3/ Observables</h4>
+                        <h4 class="mb-0">2. Observables</h4>
                         <p>
                             Observable types are configured in the Administrators space: open Entities Management and select the Observable types tab.
                             <img src="img/thehive/thehiveobs.png" class="img-fluid" width="700">
 
                         </p>
-                        <h4 class="mb-0">4/ Custom field</h4>
+                        <h4 class="mb-0">3. Custom field</h4>
                         <p>
                             Custom fields are fields that could be added to multiple cases. Field such as urgency, impact are not present and some organizations require those fields to be filled during an investigation. On TheHive4, connect as Admin and add case custom field.
 
@@ -75,8 +75,80 @@
                             <img src="img/thehive/thehivecasetemplatetask.png" class="img-fluid" width="600">
 
                             Tasks standardize investigation of incidents.
-
                         </p>
+                        <h4 class="mb-0">II/ Cortex</h4>
+                        <p>
+                            The strength of cortex resides in the actions it can do; analyze and respond. Those two functions, called analyzer and responder are the core of Cortex functioning. <br>
+                            <br>
+                            Analyzer: How to analyze observables to add more contextualization and information to the case. <br>
+                            <br>
+                            Responder: How to respond and bring an action to stop the threat ? <br>
+                            <br>
+                            TheHive and Cortex are working together, TheHive will mainly serve as frontend application and Cortex bring the action done in backend. Actionable buttons are available in TheHive to perform actions that are describe by Cortex.<br>
+                        </p>
+                        <h4 class="mb-0">1. Analyzer / Responder creation</h4>
+                        <p>
+                            In the system that host TheHive and Cortex application, create a new directory called “Custom-Analyzer” and add the absolute path to the application.conf in cortex directory. Cortex will search on this repository to fetch the analyzers or responders.<br>
+                            In the following example:
+                            <ul>
+                                <li>Analyzer directory is found in the /opt/Custom-Analyzers/analyzers</li>
+                                <li>Responder directory is found in the /opt/Custom-Analyzers/responders</li>
+                            </ul>
+                            Those two paths are added under “urls” key that specify the location of analyzers and responders. <br>
+                            <img src="img/thehive/cortexapplicationfile.png" class="img-fluid" width="600">
+                            For docker container, Cortex will also fetch the analyzers /opt/Cortex-analyzers/analyzers or /opt/Cortex-Analyzer/responders to search for different custom analyzer or responder.<br>
+                            You can map a host folder to /opt/Cortex-Analyzer/analyzer or responder. You can modify the file in your host system, the mapping will act like a file share.<br>
+                            <br>
+                            Open docker-compose.yml file and modify it like the screenshot below:
+                            <img src="img/thehive/cortexdockercompose.png" class="img-fluid" width="700">
+                            Analyzers and responders require 2 files:
+                            <ul>
+                                <li>JSON file</li>
+                                <li>Python script</li>
+                            </ul>
+                            Create a JSON file in the analyzer and responder directory and below is an example of JSON file.<br>
+                            <div class="squarebox">
+                                {<br>
+                                &emsp;"name": "Analyzer_GetUser",<br>
+                                &emsp;"version": "1.0",<br>
+                                &emsp;"author": "SkallZou",<br>
+                                &emsp;"url": "https://github.com/TheHive-Project/Cortex-Analyzers",<br>
+                                &emsp;"license": "AGPL-V3",<br>
+                                &emsp;"description": "Get user information based on username",<br>
+                                &emsp;"dataTypeList": ["username"],<br>
+                                &emsp;"baseConfig": "YahudCorp",<br>
+                                &emsp;"config": {<br>
+                                &emsp;&emsp;"service": "GetUser"<br>
+                                &emsp;},<br>
+                                &emsp;"configurationItems": [<br>
+                                &emsp;{<br>
+                                &emsp;&emsp;"name": "key",<br>
+                                &emsp;&emsp;"description": "API key for YahudCorporation",<br>
+                                &emsp;&emsp;"type": "string",<br>
+                                &emsp;&emsp;"multi": false,<br>
+                                &emsp;&emsp;"required": true<br>
+                                &emsp;}],<br>
+                                &emsp;"registration_required": true,<br>
+                                &emsp;"subscription_required": false,<br>
+                                &emsp;"service_homepage": "https://www.skallzou.github.org/",<br>
+                                &emsp;"service_logo": {<br>
+                                &emsp;"path": "assets/logo.png",<br>
+                                &emsp;"caption": "logo"<br>
+                                &emsp;},<br>
+                                &emsp;"command": "YahudCorp/analyzer_getUser.py"<br>
+                                }
+                            </div>
+                            In the JSON file, base config indicates to Cortex to create a YahudCorp Configuration. The configuration item indicates what parameters must be set in the base configuration (apikey for example).
+                            The base configuration will be found in the tab "Analyzers Config" or "Responders Config" in Cortex. <br>
+                            <br>
+                            Every analyzer and responder that have a baseConfiguration for YahudCorp will have the same set of configuration item value. This avoid to fill the value of API key for each analyzer and responder creation.<br>
+                            <br>
+                            dataTypeList indicates on what type of observable the analyzer can run. Analyzer run specifically on observable. If an observable type is not present, a custom observable types can be created. Those analyzers can be used for case enrichment.
+                            For example, if the observable is a hostname, the analyst would like to know what system is this, a domain controller, a backup server or a simple workstation ? <br>
+                            <br>
+                            "command": "YahudCorp/analyzer_getUser.py" indicates the python script to run when the analyzer is being called.
+                        </p>
+                        
 
                     </div>
                 </div>
