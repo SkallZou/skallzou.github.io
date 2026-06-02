@@ -118,7 +118,15 @@
                             Restart the docker and run certbot without dry-run.
                             <div class="squarebox">$ docker compose run --rm  certbot certonly --webroot --webroot-path /var/www/certbot/ -d example.org</div>
 
-                            If this is successful, certbot has generated the files for https.
+                            If this is successful, certbot has generated the files for https. <br>
+                            <br>
+                            After 3 months, the certificates will expire so a renew of the certificate must be done. Certbot will automatically reads existing certificate configuration in certbot/conf/renewal/*.conf<br>
+                            <div class="squarebox">docker compose -f /path/.../docker-compose.yml run --rm certbot renew --dry-run</div>
+                            If the testing "--dry-run" is successful run it with --force-renew
+                            <div class="squarebox">docker compose -f /path/.../docker-compose.yml run --rm certbot renew --force-renew</div>
+                            If this is working, automate it with a scheduled task, scheduled task on linux are made with cron. Edit the cron settings with crontab -e and append:
+                            <div class="squarebox">0 0 1 */2 * docker compose -f /path/.../docker-compose.yml run --rm certbot renew --force-renew && docker compose -f /path/.../docker-compose.yml exec nginx nginx -s reload >> /var/log/certbot.log 2>&1</div>
+                            Reload the configuration on NGINX is needed to make nginx to take the update certificates into account.
                         </p>
                         <h4 class="mb-0">3/ Configuration</h4>
                         <p>
