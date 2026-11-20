@@ -23,7 +23,7 @@
         <!-- Page Content-->
         <div>
             <nav class="navbar navbar-expand-xl navbar-dark bg-header sticky-top">
-                <h3 class="header-article"><a href="../vulnpage.html">Vulnerability Exploitation</a> > EtherHiding Simulation</h3>
+                <h3 class="header-article"><a href="../vulnpage.html">Threat Research</a> > EtherHiding Simulation</h3>
             </nav>
             <section class="article">
                 <div class="d-flex flex-column flex-md-row justify-content-between mb-5">
@@ -48,6 +48,40 @@
                             &emsp;6. Browser renders a fake Cloudflare Turnstile CAPTCHA (ClickFix lure)<br>
                             &emsp;7. Victim clicks the checkbox — clipboard is poisoned with a malicious PowerShell command<br>
                             &emsp;8. Victim follows Win+R instructions — malware executes on the host<br>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             1b. TOOLS: REMIX, ALCHEMY, SEPOLIA
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Tools Used in the Simulation: Remix, Alchemy and Sepolia</h4>
+                        <p>
+                            The lab relies on three pieces of tooling that play very different roles. None of them is part of the chain the victim sees: they are used to build the smart contract and to publish it on a blockchain.
+                            <br><br>
+                            <b>Remix</b> (<a href="https://remix.ethereum.org">remix.ethereum.org</a>) is the editor and compiler. It is a browser IDE in which the Solidity contract is written and compiled. The compiler produces two outputs: the ABI (the description of the contract's functions, used by ethers.js to build the calls) and the bytecode (the machine code stored on-chain at the contract address). Remix is only needed at build time: once the contract is deployed, nothing talks to Remix anymore.
+                            <br><br>
+                            <b>Alchemy</b> (<a href="https://www.alchemy.com">alchemy.com</a>) is the node provider. Reading from or writing to a blockchain means talking to a node, and running one yourself requires a lot of storage and a long synchronisation. Alchemy runs the nodes and exposes them as an HTTPS JSON-RPC endpoint of the form <code>https://eth-sepolia.g.alchemy.com/v2/&lt;API_KEY&gt;</code>. <code>deploy.js</code> and <code>update.js</code> send their signed transactions (<code>eth_sendRawTransaction</code>) through this endpoint, and the simulated loader sends <code>eth_call</code> through it to read <code>getPayload()</code>. The API key identifies the account on Alchemy: it is not a wallet and it cannot spend anything. In the real attack the loader uses a free public BSC endpoint (<code>bsc-dataseed.binance.org</code>) that needs neither an account nor a key.
+                            <br><br>
+                            <b>Sepolia</b> is the Ethereum test network on which the contract lives. It behaves like Mainnet (same EVM, same transactions, same gas mechanics) but its ETH has no value and comes from faucets. Only the RPC URL changes between the lab and a real BSC campaign: the contract, the ABI, the function selectors and the <code>eth_call</code> are identical.
+                            <br><br>
+                            How the pieces fit together:
+
+                            <div class="squarebox">
+                                Remix: write and compile UpdateableHello.sol &rarr; ABI + bytecode <br>
+                                &emsp;&emsp;&darr; <br>
+                                deploy.js: signs the deployment transaction with the wallet private key <br>
+                                &emsp;&emsp;&darr; <br>
+                                Alchemy endpoint: forwards the transaction to Sepolia <br>
+                                &emsp;&emsp;&darr; <br>
+                                Sepolia: stores the bytecode at a new contract address <br>
+                                &emsp;&emsp;&darr; <br>
+                                update.js (setPayload) and the loader (eth_call getPayload) reach the same address through Alchemy <br>
+                            </div>
+
+                            Where each item needed by <code>deploy.js</code> comes from:
+                            <br><br>
+                            &emsp;Alchemy key: Alchemy dashboard (see How to Get an Alchemy API Key below)<br>
+                            &emsp;Private key: the test wallet created with the Node.js one-liner in the deployment section. Use a test wallet only, never a wallet that holds real funds<br>
+                            &emsp;ABI and bytecode: Remix compiler panel (see How to Use Remix below)<br>
                         </p>
 
                         <!-- ─────────────────────────────────────────────
@@ -90,7 +124,63 @@
                             &emsp;<code>getPayload()</code> is a <code>view</code> function — it reads state, costs no gas, and is called via <code>eth_call</code>. No signing required. Any anonymous HTTP client can call it.<br>
                             &emsp;<code>setPayload()</code> is a state-changing function — it writes to the blockchain. It requires a signed transaction (<code>eth_sendRawTransaction</code>), costs gas, and requires the deployer's private key.<br>
                             <br>
-                            Once compiled in Remix, copy the ABI from the Solidity Compiler tab and the bytecode from Compilation Details &rarr; BYTECODE &rarr; object field.
+                            Once compiled in Remix, the ABI and the bytecode are copied into <code>deploy.js</code>. The exact steps are described in the Remix section below.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             2b. HOW TO USE REMIX / HOW TO GET AN ALCHEMY API KEY
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">How to Use Remix</h4>
+                        <p>
+                            &emsp;Step 1: open <a href="https://remix.ethereum.org">remix.ethereum.org</a> in a browser. Nothing has to be installed. During this lab Remix asked for an account before the compiler could be used (older tutorials describe it as account-free). The Remix account is separate from the wallet and from the Alchemy account.<br>
+                            &emsp;Step 2: in the Files panel (left sidebar) create a file named <code>UpdateableHello.sol</code> and paste the contract from the previous section.<br>
+                            &emsp;Step 3: open the Solidity Compiler tab (the Compile icon in the left sidebar), choose a compiler version that fits the pragma line (0.8.20 or newer for <code>^0.8.20</code>) and click Compile. A green check on the Compile icon means the compilation succeeded. Warnings can be ignored for this lab.<br>
+                            &emsp;Step 4: under CONTRACT, check that <code>UpdateableHello</code> is selected. This matters when a file contains several contracts.<br>
+                            &emsp;Step 5: at the bottom of the left panel, click ABI to copy the ABI and paste it in the <code>ABI</code> constant of <code>deploy.js</code>. The copy from Remix has five entries: the constructor, <code>getPayload</code>, <code>setPayload</code>, <code>owner</code> and <code>payload</code>. <code>owner</code> and <code>payload</code> appear because Solidity generates an automatic getter for every public state variable. A shorter ABI that only lists the entries the script uses also works.<br>
+                            &emsp;Step 6: click Bytecode (or open Compilation Details) to get the bytecode. If the copied text is a JSON block, the value needed is the <code>object</code> field, a long hex string starting with <code>6080...</code>. Put the <code>0x</code> prefix in front of it in <code>deploy.js</code>:<br>
+                            <br>
+                            <div class="squarebox">
+                                const BYTECODE = "0x6080..."; <br>
+                            </div>
+                            <br>
+                            Remix can also deploy a contract from its Deploy tab, but this lab does not use it:
+                            <br><br>
+                            &emsp;The Remix VM environments run inside the browser only. A contract deployed there cannot be reached through Alchemy.<br>
+                            &emsp;Injected Provider needs a wallet extension such as MetaMask.<br>
+                            &emsp;Custom - External HTTP Provider can point Remix at the Alchemy Sepolia URL, but Remix then has no private key to sign with and the deployment fails with a gas estimation error.<br>
+                            <br>
+                            The deployment is therefore done by <code>deploy.js</code>, which signs the transaction locally and sends it through the Alchemy endpoint. Every time the <code>.sol</code> file changes, compile again and copy the new ABI and bytecode: new bytecode deployed means a new contract address.
+                        </p>
+
+                        <h4 class="mb-0">How to Get an Alchemy API Key</h4>
+                        <p>
+                            &emsp;Step 1: go to <a href="https://www.alchemy.com">alchemy.com</a> and create a free account. The free plan is enough for this lab.<br>
+                            &emsp;Step 2: in the dashboard, create an app (or open Node RPCs) and select the network Ethereum Sepolia. Do not pick Ethereum Mainnet: Sepolia is the test network and has no real value.<br>
+                            &emsp;Step 3: copy the API key. The dashboard shows it masked, click the eye icon to reveal it and the Copy button to copy it.<br>
+                            &emsp;Step 4: the endpoint is built from the network and the key:<br>
+                            <br>
+                            <div class="squarebox">
+                                https://eth-sepolia.g.alchemy.com/v2/&lt;YOUR_API_KEY&gt; <br>
+                            </div>
+                            <br>
+                            &emsp;Step 5: test the key with a read-only request:<br>
+                            <br>
+                            <div class="squarebox">
+                                curl https://eth-sepolia.g.alchemy.com/v2/&lt;YOUR_API_KEY&gt; \ <br>
+                                &emsp;-X POST -H "Content-Type: application/json" \ <br>
+                                &emsp;-d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' <br>
+                            </div>
+                            <br>
+                            A JSON answer with a hex <code>result</code> (the latest block number) means the key and the network work. Replace <code>eth_blockNumber</code> by <code>eth_chainId</code> and the result should be <code>0xaa36a7</code>, which is 11155111 in decimal, the chain id of Sepolia.
+                            <br><br>
+                            &emsp;Step 6: paste the key in <code>ALCHEMY_KEY</code> of <code>deploy.js</code> and <code>update.js</code>, and in <code>RPC_URL</code> of the loader.<br>
+                            <br>
+                            Things to know:
+                            <br><br>
+                            &emsp;The error <code>ETH_MAINNET is not enabled for this app</code> means the URL points to <code>eth-mainnet</code> while the app only has Sepolia enabled. Use the <code>eth-sepolia</code> URL.<br>
+                            &emsp;The same contract address does not exist on both networks: a contract deployed on Sepolia returns an empty <code>0x</code> when queried through the Mainnet endpoint.<br>
+                            &emsp;Alchemy does not provide test ETH. The wallet needs Sepolia ETH to pay the gas of the deployment and of each <code>setPayload()</code> call. Some faucets (Alchemy and QuickNode at the time of the lab) refuse a fresh wallet with the message that a small Mainnet balance is required. The Google Cloud Sepolia faucet worked with a newly created wallet.<br>
+                            &emsp;The API key is tied to the account quota. In the lab the loader runs in the browser, so the key is readable in the page source: use a throwaway free key and keep it out of public repositories.<br>
                         </p>
 
                         <!-- ─────────────────────────────────────────────
@@ -113,8 +203,9 @@
                                 <br>
                                 const ALCHEMY_KEY = "YOUR_ALCHEMY_API_KEY"; <br>
                                 const PRIVATE_KEY = "0xYourPrivateKey"; <br>
-                                const BYTECODE    = "0x608060..."; // from Remix Compilation Details <br>
+                                const BYTECODE    = "0x608060..."; // from Remix: compiler panel &rarr; Bytecode (object field, with the 0x prefix) <br>
                                 <br>
+                                // ABI: copied from Remix (compiler panel &rarr; ABI). Trimmed here to the entries the lab uses <br>
                                 const ABI = [ <br>
                                 &emsp;{ "inputs": [], "stateMutability": "nonpayable", "type": "constructor" }, <br>
                                 &emsp;{ "inputs": [], "name": "getPayload", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" }, <br>
@@ -158,6 +249,41 @@
                             The output will show the deployed contract address. This address is permanent on Sepolia — save it for all subsequent steps.
                             <br><br>
                             Note: <code>deploy.js</code> calls <code>eth_sendRawTransaction</code> under the hood — a real signed transaction that costs Sepolia ETH (worthless test currency). The private key signs the transaction locally; only the signed bytes are broadcast to the network. The key itself never leaves your machine.
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             3b. CONTRACT ADDRESS, WALLET ADDRESS AND ETHERSCAN
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">Contract Address, Wallet Address and Etherscan</h4>
+                        <p>
+                            Two different addresses are involved and they are easy to confuse:
+                            <br><br>
+                            &emsp;The wallet address comes from the generated wallet. It is the identity that holds the Sepolia ETH, pays the gas and signs the transactions. Nothing is deployed at this address.<br>
+                            &emsp;The contract address is printed by <code>deploy.js</code> after the deployment. It is where the bytecode is stored, and it is the value used in the <code>to</code> field of <code>eth_call</code> and in <code>CONTRACT_ADDRESS</code> of the loader.<br>
+                            <br>
+                            Putting the wallet address in the <code>to</code> field is a common mistake: the call succeeds but returns an empty <code>0x</code>, because a wallet has no code to execute.
+                            <br><br>
+                            Every deployment creates a new contract and therefore a new address, derived from the deployer address and its transaction count (nonce). The bytecode stays permanently at that address:
+
+                            <div class="squarebox">
+                                HelloWorld.sol    &rarr; compile in Remix &rarr; bytecode A &rarr; deployed at 0xAaa... <br>
+                                HelloWorld2.sol   &rarr; compile in Remix &rarr; bytecode B &rarr; deployed at 0xBbb... <br>
+                                TokenContract.sol &rarr; compile in Remix &rarr; bytecode C &rarr; deployed at 0xCcc... <br>
+                            </div>
+
+                            The same wallet deploying the same bytecode twice also gives two different addresses. This is why an EtherHiding operator deploys once and then only calls <code>setPayload()</code>: that call changes the stored value, not the bytecode and not the address.
+                            <br><br>
+                            The contract and its history can be checked on Etherscan (BSCScan for BSC):
+
+                            <div class="squarebox">
+                                https://sepolia.etherscan.io/address/0xYourContractAddress <br>
+                            </div>
+
+                            &emsp;The Contract tab shows the bytecode stored at the address.<br>
+                            &emsp;The Transactions tab shows the contract creation transaction. Its From field is the deployer wallet.<br>
+                            &emsp;From the wallet address, every other contract and transaction of the same operator can be listed.<br>
+                            <br>
+                            A contract is verified when its Solidity source is published on Etherscan (Verify and Publish, with the exact compiler version and optimization settings) and recompiles to the same bytecode. A verified contract shows its source and gets a Read Contract tab. An unverified contract only exposes raw bytecode: for a contract that stores data or receives funds this is highly suspicious, and malicious contracts are usually left unverified so that their logic is not readable.
                         </p>
 
                         <!-- ─────────────────────────────────────────────
@@ -244,6 +370,30 @@
                             <div class="squarebox">
                                 docker exec -it &lt;container_name&gt; wp theme list --allow-root --status=active
                             </div>
+
+                            Without access to the server, the active theme is also visible in the page source of the site:
+
+                            <div class="squarebox">
+                                curl http://localhost:8080 | grep 'wp-content/themes' <br>
+                            </div>
+
+                            Before adding the full loader, confirm that the hook fires with a minimal callback. The text <code>test</code> must appear at the bottom of the page:
+
+                            <div class="squarebox">
+                                add_action('wp_footer', 'test'); <br>
+                                 <br>
+                                function test() { <br>
+                                &emsp;echo "test"; <br>
+                                } <br>
+                            </div>
+
+                            If nothing appears:
+                            <br><br>
+                            &emsp;The theme's <code>footer.php</code> must call <code>wp_footer()</code>. Some themes do not, and the hook never fires.<br>
+                            &emsp;The edited <code>functions.php</code> must belong to the active theme. Editing an inactive theme has no effect.<br>
+                            &emsp;If <code>DISALLOW_FILE_EDIT</code> is set to <code>true</code> in <code>wp-config.php</code>, the Theme File Editor is not available. Edit the file directly in the container instead.<br>
+                            &emsp;A PHP syntax error in <code>functions.php</code> (a missing <code>;</code> or <code>}</code>) breaks the whole site, so keep the edits small.<br>
+                            <br>
 
                             Then add the following to the active theme's <code>functions.php</code> via Appearance &rarr; Theme File Editor &rarr; functions.php in wp-admin:
 
@@ -529,6 +679,35 @@
                                 AND option_name IN ('widget_text','widget_custom_html') <br>
                                 OR option_name LIKE 'theme_mods_%'; <br>
                             </div>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             10. MITRE ATT&CK
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">MITRE ATT&amp;CK Mapping</h4>
+                        <p>
+                            &emsp;T1102.001 — Web Service: Dead Drop Resolver (blockchain as resolver)<br>
+                            &emsp;T1059.007 — Command and Scripting Interpreter: JavaScript (eval() execution)<br>
+                            &emsp;T1505.003 — Server Software Component: Web Shell (wp_footer injection)<br>
+                            &emsp;T1566.002 — Phishing: Spearphishing Link (ClickFix lure delivery)<br>
+                            &emsp;T1204.001 — User Execution: Malicious Link (victim pastes clipboard command)<br>
+                            &emsp;T1059.001 — Command and Scripting Interpreter: PowerShell (clipboard payload execution)<br>
+                        </p>
+
+                        <!-- ─────────────────────────────────────────────
+                             11. REFERENCES
+                        ───────────────────────────────────────────── -->
+                        <h4 class="mb-0">References</h4>
+                        <p>
+                            &emsp;<a href="https://thehackernews.com/2023/10/binances-smart-chain-exploited-in-new.html">The Hacker News — Binance's Smart Chain Exploited in New 'EtherHiding' Malware Campaign (Guardio Labs research, Oct 2023)</a><br>
+                            &emsp;<a href="https://darkreading.com/attacks-breaches/etherhiding-blockchain-technique-hides-malicious-code-wordpress-sites">Dark Reading — 'Etherhiding' Blockchain Technique Masks Malicious Code in WordPress Sites</a><br>
+                            &emsp;<a href="https://www.proofpoint.com/us/blog/threat-insight/security-brief-clickfix-social-engineering-technique-floods-threat-landscape">Proofpoint — Security Brief: ClickFix Social Engineering Technique Floods Threat Landscape</a><br>
+                            &emsp;<a href="https://proofpoint.com/us/blog/threat-insight/clipboard-compromise-powershell-self-pwn">Proofpoint — From Clipboard to Compromise: A PowerShell Self-Pwn</a><br>
+                            &emsp;<a href="https://attack.mitre.org/techniques/T1102/001/">MITRE ATT&amp;CK T1102.001 — Dead Drop Resolver</a><br>
+                            &emsp;<a href="https://sepolia.etherscan.io">Sepolia Etherscan — testnet explorer</a><br>
+                            &emsp;<a href="https://remix.ethereum.org">Remix IDE — Solidity browser compiler</a><br>
+                            &emsp;<a href="https://www.alchemy.com">Alchemy — Ethereum node provider (JSON-RPC endpoint and API key)</a><br>
+                            &emsp;<a href="https://cloud.google.com/application/web3/faucet/ethereum/sepolia">Google Cloud — Sepolia faucet</a><br>
                         </p>
 
                     </div>
